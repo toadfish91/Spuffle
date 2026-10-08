@@ -47,7 +47,7 @@ You need your own free Spotify Developer app to get a Client ID.
 ## Step 3: Clone and Configure the Project
 
 ```bash
-git clone https://github.com/yourusername/spuffle.git
+git clone https://github.com/toadfish91/spuffle.git
 cd spuffle
 ```
 
