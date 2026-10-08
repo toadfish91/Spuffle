@@ -28,6 +28,18 @@ data class Track(
     val artists: List<Artist>
 )
 
+data class QueuedTrack(
+    val uri: String,
+    val title: String,
+    val artist: String
+) {
+    val displayTitle: String
+        get() = title.ifBlank { uri }
+
+    val displayArtist: String
+        get() = artist.ifBlank { "Spotify track" }
+}
+
 data class Artist(val name: String)
 
 data class PlaybackRequest(
@@ -116,6 +128,13 @@ interface SpotifyApiService {
     suspend fun startPlayback(
         @Header("Authorization") auth: String,
         @Body request: PlaybackRequest,
+        @Query("device_id") deviceId: String? = null
+    ): Response<Unit>
+
+    @PUT("me/player/shuffle")
+    suspend fun setShuffleMode(
+        @Header("Authorization") auth: String,
+        @Query("state") state: Boolean,
         @Query("device_id") deviceId: String? = null
     ): Response<Unit>
 

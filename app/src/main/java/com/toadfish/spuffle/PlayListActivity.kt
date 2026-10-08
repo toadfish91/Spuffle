@@ -5,6 +5,9 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.toadfish.spuffle.databinding.ActivityPlaylistBinding
@@ -19,6 +22,23 @@ class PlayListActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityPlaylistBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val initialLeftPadding = binding.root.paddingLeft
+        val initialTopPadding = binding.root.paddingTop
+        val initialRightPadding = binding.root.paddingRight
+        val initialBottomPadding = binding.root.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(
+                initialLeftPadding + systemBars.left,
+                initialTopPadding + systemBars.top,
+                initialRightPadding + systemBars.right,
+                initialBottomPadding + systemBars.bottom
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
 
         binding.rvPlaylists.layoutManager = LinearLayoutManager(this)
 

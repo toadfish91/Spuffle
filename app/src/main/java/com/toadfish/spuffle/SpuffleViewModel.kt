@@ -14,7 +14,7 @@ sealed class SpuffleState {
     object Loading : SpuffleState()
     data class FetchingTracks(val fetched: Int, val total: Int) : SpuffleState()
     data class PlaylistsLoaded(val playlists: List<Playlist>) : SpuffleState()
-    data class Success(val message: String) : SpuffleState()
+    data class Success(val message: String, val queuedTracks: List<QueuedTrack> = emptyList()) : SpuffleState()
     data class Error(val message: String) : SpuffleState()
 }
 
@@ -161,17 +161,34 @@ class SpuffleViewModel : ViewModel() {
                 return@launch
             }
 
-            val shuffleCount = minOf(Constants.SHUFFLE_COUNT, allTracks.size)
-            val randomTracks = allTracks.shuffled().take(shuffleCount)
+            val playbackQueue = buildPlaybackQueue(allTracks)
+            val shuffleCount = playbackQueue.size
+            val queuedTracks = playbackQueue.map { track ->
+                QueuedTrack(
+                    uri = track.uri,
+                    title = track.name,
+                    artist = track.artists.joinToString(", ") { it.name }
+                )
+            }
+
+            val shuffleResponse = RetrofitClient.apiService.setShuffleMode(auth = auth, state = false)
+            if (!shuffleResponse.isSuccessful && shuffleResponse.code() != 204) {
+                _state.value = SpuffleState.Error(
+                    "Could not turn off Spotify shuffle (${shuffleResponse.code()}). " +
+                            "Please open Spotify and try again so playback follows the displayed order."
+                )
+                return@launch
+            }
 
             val playResponse = RetrofitClient.apiService.startPlayback(
                 auth = auth,
-                request = PlaybackRequest(uris = randomTracks)
+                request = PlaybackRequest(uris = playbackQueue.map { it.uri })
             )
 
             if (playResponse.isSuccessful || playResponse.code() == 204) {
                 _state.value = SpuffleState.Success(
-                    "🎵 Playing $shuffleCount random tracks from \"${playlist.name}\" (${allTracks.size} total songs)"
+                    "🎵 Playing $shuffleCount random tracks from \"${playlist.name}\" (${allTracks.size} total songs)",
+                    queuedTracks
                 )
                 SpuffleWidget.updateAllWidgets(context)
             } else {
@@ -182,8 +199,11 @@ class SpuffleViewModel : ViewModel() {
             }
         }
     }
+    internal fun buildPlaybackQueue(tracks: List<Track>): List<Track> =
+        tracks.shuffled().take(minOf(Constants.SHUFFLE_COUNT, tracks.size))
+
     // --- Private helpers ---
-    private suspend fun getLikedSongsWithCache(context: Context, auth: String, total: Int): List<String>? {
+    private suspend fun getLikedSongsWithCache(context: Context, auth: String, total: Int): List<Track>? {
         // Check if we have a valid cache
         if (PlaylistCache.isLikedSongsCacheValid(context)) {
             val cached = PlaylistCache.getCachedLikedSongs(context)
@@ -204,7 +224,7 @@ class SpuffleViewModel : ViewModel() {
         return tracks
     }
 
-    private suspend fun getPlaylistTracksWithCache(context: Context, auth: String, playlist: Playlist): List<String>? {
+    private suspend fun getPlaylistTracksWithCache(context: Context, auth: String, playlist: Playlist): List<Track>? {
         // Fetch current snapshot_id (lightweight single call)
         val snapshotResponse = RetrofitClient.apiService.getPlaylistSnapshot(auth, playlist.id)
         val currentSnapshotId = snapshotResponse.body()?.snapshot_id
@@ -212,7 +232,7 @@ class SpuffleViewModel : ViewModel() {
         if (currentSnapshotId != null) {
             val cachedSnapshotId = PlaylistCache.getSnapshotId(context, playlist.id)
             if (currentSnapshotId == cachedSnapshotId) {
-                val cached = PlaylistCache.getCachedTracks(context, playlist.id)
+                val cached = PlaylistCache.getCachedTrackDetails(context, playlist.id)
                 if (!cached.isNullOrEmpty()) {
                     android.util.Log.d("Spuffle", "Cache hit for '${playlist.name}' (snapshot match, ${cached.size} tracks)")
                     _state.value = SpuffleState.FetchingTracks(cached.size, cached.size)
@@ -239,7 +259,7 @@ class SpuffleViewModel : ViewModel() {
         return response.body()?.total ?: 0
     }
 
-    private suspend fun fetchAllLikedSongs(auth: String, total: Int): List<String>? {
+    private suspend fun fetchAllLikedSongs(auth: String, total: Int): List<Track>? {
         // If total is 0, attempt to re-fetch the real count rather than giving up
         val actualTotal = if (total > 0) total else {
             val response = RetrofitClient.apiService.getSavedTracks(auth, limit = 1, offset = 0)
@@ -255,7 +275,7 @@ class SpuffleViewModel : ViewModel() {
         _state.value = SpuffleState.FetchingTracks(0, actualTotal)
         return try {
             val pageCount = (actualTotal + Constants.TRACKS_PER_PAGE - 1) / Constants.TRACKS_PER_PAGE
-            val allTracks = mutableListOf<String>()
+            val allTracks = mutableListOf<Track>()
 
             // Process in batches to avoid rate limiting
             (0 until pageCount).chunked(BATCH_SIZE).forEach { batch ->
@@ -283,7 +303,7 @@ class SpuffleViewModel : ViewModel() {
                         }
                         return null
                     }
-                    allTracks.addAll(response.body()?.items?.map { it.track.uri } ?: emptyList())
+                    allTracks.addAll(response.body()?.items?.map { it.track } ?: emptyList())
                 }
                 _state.value = SpuffleState.FetchingTracks(minOf(allTracks.size, actualTotal), actualTotal)
 
@@ -296,7 +316,7 @@ class SpuffleViewModel : ViewModel() {
             null
         }
     }
-    private suspend fun fetchAllPlaylistTracks(auth: String, playlistId: String, total: Int): List<String>? {
+    private suspend fun fetchAllPlaylistTracks(auth: String, playlistId: String, total: Int): List<Track>? {
         return try {
             val firstResponse = RetrofitClient.apiService.getPlaylist(auth, playlistId, offset = 0, limit = 50)
             if (!firstResponse.isSuccessful) {
@@ -317,8 +337,8 @@ class SpuffleViewModel : ViewModel() {
 
             _state.value = SpuffleState.FetchingTracks(firstPage.items.size, actualTotal)
 
-            val allTracks = mutableListOf<String>()
-            allTracks.addAll(firstPage.items.mapNotNull { it.track?.uri ?: it.item?.uri })
+            val allTracks = mutableListOf<Track>()
+            allTracks.addAll(firstPage.items.mapNotNull { it.track ?: it.item })
 
             if (actualTotal > 50) {
                 val pageCount = (actualTotal + 49) / 50
@@ -350,8 +370,8 @@ class SpuffleViewModel : ViewModel() {
                             }
                             return null
                         }
-                        val uris = response.body()?.items?.items?.mapNotNull { it.track?.uri ?: it.item?.uri } ?: emptyList()
-                        allTracks.addAll(uris)
+                        val tracks = response.body()?.items?.items?.mapNotNull { it.track ?: it.item } ?: emptyList()
+                        allTracks.addAll(tracks)
                     }
                     _state.value = SpuffleState.FetchingTracks(minOf(allTracks.size, actualTotal), actualTotal)
                     kotlinx.coroutines.delay(BATCH_DELAY_MS)

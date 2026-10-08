@@ -7,7 +7,11 @@ import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.toadfish.spuffle.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
@@ -37,6 +41,25 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val initialLeftPadding = binding.root.paddingLeft
+        val initialTopPadding = binding.root.paddingTop
+        val initialRightPadding = binding.root.paddingRight
+        val initialBottomPadding = binding.root.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(
+                initialLeftPadding + systemBars.left,
+                initialTopPadding + systemBars.top,
+                initialRightPadding + systemBars.right,
+                initialBottomPadding + systemBars.bottom
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
+
+        binding.rvQueuedTracks.layoutManager = LinearLayoutManager(this)
 
         setupUI()
         observeState()
@@ -92,6 +115,8 @@ class MainActivity : AppCompatActivity() {
                         binding.progressBar.visibility = View.VISIBLE
                         updateStatus("Starting...")
                         binding.btnSpuffle.isEnabled = false
+                        binding.rvQueuedTracks.visibility = View.GONE
+                        binding.tvQueuedTracksLabel.visibility = View.GONE
                     }
                     is SpuffleState.FetchingTracks -> {
                         val pct = if (state.total > 0) (state.fetched * 100 / state.total) else 0
@@ -103,10 +128,16 @@ class MainActivity : AppCompatActivity() {
                         binding.btnSpuffle.isEnabled = true
                         updateStatus(state.message)
                         updateUI(loggedIn = true)
+                        val hasQueuedTracks = state.queuedTracks.isNotEmpty()
+                        binding.rvQueuedTracks.visibility = if (hasQueuedTracks) View.VISIBLE else View.GONE
+                        binding.tvQueuedTracksLabel.visibility = if (hasQueuedTracks) View.VISIBLE else View.GONE
+                        binding.rvQueuedTracks.adapter = QueuedTrackAdapter(state.queuedTracks)
                     }
                     is SpuffleState.Error -> {
                         binding.progressBar.visibility = View.GONE
                         binding.btnSpuffle.isEnabled = true
+                        binding.rvQueuedTracks.visibility = View.GONE
+                        binding.tvQueuedTracksLabel.visibility = View.GONE
                         updateStatus(state.message, isError = true)
                     }
                 }

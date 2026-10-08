@@ -55,20 +55,20 @@ class WidgetSpuffleService : Service() {
 
         // Get tracks — from cache only, no full fetch from widget
         // If cache is empty user needs to open the app first
-        val allTracks = if (playlist.isLikedSongs) {
-            PlaylistCache.getCachedLikedSongs(context)
+        val cachedUris = if (playlist.isLikedSongs) {
+            PlaylistCache.getCachedLikedSongs(context)?.map { it.uri }
         } else {
             PlaylistCache.getCachedTracks(context, playlist.id)
         }
 
-        if (allTracks.isNullOrEmpty()) {
+        if (cachedUris.isNullOrEmpty()) {
             showWidgetError("Open app to load tracks first")
             return
         }
 
         // Shuffle and play
-        val shuffleCount = minOf(Constants.SHUFFLE_COUNT, allTracks.size)
-        val randomTracks = allTracks.shuffled().take(shuffleCount)
+        val shuffleCount = minOf(Constants.SHUFFLE_COUNT, cachedUris.size)
+        val randomTracks = cachedUris.shuffled().take(shuffleCount)
 
         val response = RetrofitClient.apiService.startPlayback(
             auth = auth,
