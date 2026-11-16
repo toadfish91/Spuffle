@@ -34,3 +34,6 @@ replay_pid*
 *.keystore
 
 local.properties
+
+# Generated Android release artifacts
+/app/release/

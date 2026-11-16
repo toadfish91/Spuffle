@@ -72,7 +72,7 @@ class WidgetSpuffleService : Service() {
 
         val response = RetrofitClient.apiService.startPlayback(
             auth = auth,
-            request = PlaybackRequest(uris = randomTracks)
+            request = PlaybackRequest.startingAtFirst(randomTracks)
         )
 
         if (response.isSuccessful || response.code() == 204) {

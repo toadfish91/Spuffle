@@ -42,9 +42,24 @@ data class QueuedTrack(
 
 data class Artist(val name: String)
 
+data class PlaybackOffset(val uri: String)
+
 data class PlaybackRequest(
-    val uris: List<String>
-)
+    val uris: List<String>,
+    val offset: PlaybackOffset,
+    val position_ms: Int
+) {
+    companion object {
+        fun startingAtFirst(uris: List<String>): PlaybackRequest {
+            require(uris.isNotEmpty()) { "Playback queue must contain at least one track." }
+            return PlaybackRequest(
+                uris = uris,
+                offset = PlaybackOffset(uri = uris.first()),
+                position_ms = 0
+            )
+        }
+    }
+}
 
 data class UserPlaylistsResponse(
     val total: Int,

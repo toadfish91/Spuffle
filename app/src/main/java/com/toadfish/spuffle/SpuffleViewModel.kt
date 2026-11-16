@@ -182,7 +182,7 @@ class SpuffleViewModel : ViewModel() {
 
             val playResponse = RetrofitClient.apiService.startPlayback(
                 auth = auth,
-                request = PlaybackRequest(uris = playbackQueue.map { it.uri })
+                request = PlaybackRequest.startingAtFirst(playbackQueue.map { it.uri })
             )
 
             if (playResponse.isSuccessful || playResponse.code() == 204) {
