@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
             val playlist = Playlist(
                 id = data.getStringExtra("playlist_id") ?: return@registerForActivityResult,
                 name = data.getStringExtra("playlist_name") ?: "Unknown",
-                trackCount = data.getIntExtra("playlist_track_count", 0),
+                trackCount = data.getIntExtra("playlist_track_count", -1).takeIf { it >= 0 },
                 imageUrl = null,
                 isLikedSongs = data.getBooleanExtra("playlist_is_liked_songs", false)
             )
@@ -123,6 +123,8 @@ class MainActivity : AppCompatActivity() {
                         updateStatus("Fetching tracks... ${state.fetched}/${state.total} ($pct%)")
                     }
                     is SpuffleState.PlaylistsLoaded -> Unit // handled in PlaylistActivity
+                    is SpuffleState.CheckingPlaylist,
+                    is SpuffleState.PlaylistChecked -> Unit // handled in PlaylistActivity
                     is SpuffleState.Success -> {
                         binding.progressBar.visibility = View.GONE
                         binding.btnSpuffle.isEnabled = true

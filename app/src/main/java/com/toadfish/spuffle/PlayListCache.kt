@@ -21,6 +21,16 @@ object PlaylistCache {
     fun getCachedTracks(context: Context, playlistId: String): List<String>? =
         getCachedTrackDetails(context, playlistId)?.map { it.uri }
 
+    fun getCachedTrackCount(context: Context, playlistId: String): Int? =
+        prefs(context).takeIf { it.contains("track_count_$playlistId") }
+            ?.getInt("track_count_$playlistId", 0)
+
+    fun saveTrackCount(context: Context, playlistId: String, trackCount: Int) {
+        prefs(context).edit()
+            .putInt("track_count_$playlistId", trackCount)
+            .apply()
+    }
+
     fun getCachedTrackDetails(context: Context, playlistId: String): List<Track>? {
         val raw = prefs(context).getString("tracks_$playlistId", null) ?: return null
 
@@ -86,7 +96,7 @@ object PlaylistCache {
         prefs(context).edit().apply {
             putString("last_playlist_id", playlist.id)
             putString("last_playlist_name", playlist.name)
-            putInt("last_playlist_track_count", playlist.trackCount)
+            putInt("last_playlist_track_count", playlist.trackCount ?: -1)
             putBoolean("last_playlist_is_liked_songs", playlist.isLikedSongs)
             apply()
         }
@@ -97,7 +107,7 @@ object PlaylistCache {
         return Playlist(
             id = id,
             name = prefs(context).getString("last_playlist_name", "Last Playlist") ?: "Last Playlist",
-            trackCount = prefs(context).getInt("last_playlist_track_count", 0),
+            trackCount = prefs(context).getInt("last_playlist_track_count", -1).takeIf { it >= 0 },
             imageUrl = null,
             isLikedSongs = prefs(context).getBoolean("last_playlist_is_liked_songs", false)
         )

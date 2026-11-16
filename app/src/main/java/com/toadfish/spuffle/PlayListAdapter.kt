@@ -24,7 +24,11 @@ class PlaylistAdapter(
         val playlist = playlists[position]
         holder.binding.apply {
             tvPlaylistName.text = playlist.name
-            tvTrackCount.text = "${playlist.trackCount} songs"
+            tvTrackCount.text = if (playlist.trackCount != null) {
+                "${playlist.trackCount} songs"
+            } else {
+                "Select to load song count"
+            }
 
             // Green music note icon for Liked Songs, generic icon for others
             ivPlaylistIcon.setImageResource(

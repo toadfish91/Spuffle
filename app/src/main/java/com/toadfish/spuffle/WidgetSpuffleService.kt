@@ -79,7 +79,7 @@ class WidgetSpuffleService : Service() {
             showWidgetStatus("Playing ${playlist.name} ✓")
             // Reset display after 3 seconds
             kotlinx.coroutines.delay(3000)
-            showWidgetStatus("${playlist.trackCount} songs")
+            showWidgetStatus("${cachedUris.size} songs")
         } else {
             showWidgetError("Open Spotify first")
         }

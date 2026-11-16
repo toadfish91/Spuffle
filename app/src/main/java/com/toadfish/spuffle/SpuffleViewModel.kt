@@ -8,10 +8,13 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 sealed class SpuffleState {
     object Idle : SpuffleState()
     object Loading : SpuffleState()
+    data class CheckingPlaylist(val playlist: Playlist) : SpuffleState()
+    data class PlaylistChecked(val playlist: Playlist) : SpuffleState()
     data class FetchingTracks(val fetched: Int, val total: Int) : SpuffleState()
     data class PlaylistsLoaded(val playlists: List<Playlist>) : SpuffleState()
     data class Success(val message: String, val queuedTracks: List<QueuedTrack> = emptyList()) : SpuffleState()
@@ -106,15 +109,32 @@ class SpuffleViewModel : ViewModel() {
                     }
                 }
 
-                val body = response.body() ?: break
+                val body = response.body() ?: run {
+                    _state.value = SpuffleState.Error(
+                        "Spotify returned an empty playlist response (${response.code()}). Please try again."
+                    )
+                    return@launch
+                }
                 total = body.total
+                android.util.Log.d(
+                    "Spuffle",
+                    "Loaded ${body.items.size} playlists at offset $offset of $total"
+                )
+                if (body.items.isEmpty() && offset < total) {
+                    _state.value = SpuffleState.Error(
+                        "Spotify reported more playlists but returned none. Please try again."
+                    )
+                    return@launch
+                }
 
                 body.items.forEach { item ->
                     val blockedNames = setOf("starred", "liked from radio", "windows media player")
                     if (item.name.lowercase() in blockedNames) return@forEach
 
-                    val cachedTracks = PlaylistCache.getCachedTracks(context, item.id)
-                    val trackCount = item.tracks?.total ?: cachedTracks?.size ?: 0
+                    val trackCount = item.tracks?.total?.also {
+                        PlaylistCache.saveTrackCount(context, item.id, it)
+                    } ?: PlaylistCache.getCachedTrackCount(context, item.id)
+                        ?: PlaylistCache.getCachedTracks(context, item.id)?.size
 
                     allPlaylists.add(
                         Playlist(
@@ -130,6 +150,67 @@ class SpuffleViewModel : ViewModel() {
             } while (offset < total)
 
             _state.value = SpuffleState.PlaylistsLoaded(allPlaylists)
+        }
+    }
+
+    fun checkPlaylist(context: Context, playlist: Playlist) {
+        viewModelScope.launch {
+            _state.value = SpuffleState.CheckingPlaylist(playlist)
+
+            try {
+                val token = getValidToken(context) ?: run {
+                    _state.value = SpuffleState.Error("Not logged in.")
+                    return@launch
+                }
+                val auth = "Bearer $token"
+                if (playlist.isLikedSongs) {
+                    val response = RetrofitClient.apiService.getSavedTracks(auth, limit = 1, offset = 0)
+                    if (!response.isSuccessful) {
+                        _state.value = SpuffleState.Error(
+                            "Could not check Liked Songs (${response.code()}). Please try again."
+                        )
+                        return@launch
+                    }
+                    val trackCount = response.body()?.total
+                    if (trackCount == null) {
+                        _state.value = SpuffleState.Error(
+                            "Spotify did not return the Liked Songs count. Please try again."
+                        )
+                        return@launch
+                    }
+                    PlaylistCache.saveTrackCount(context, playlist.id, trackCount)
+                    _state.value = SpuffleState.PlaylistChecked(playlist.copy(trackCount = trackCount))
+                    return@launch
+                }
+
+                val response = RetrofitClient.apiService.getPlaylistTracks(
+                    auth = auth,
+                    playlistId = playlist.id,
+                    offset = 0,
+                    limit = 1
+                )
+
+                if (!response.isSuccessful) {
+                    val error = response.errorBody()?.string()
+                    _state.value = SpuffleState.Error(
+                        "Could not check playlist (${response.code()}): $error"
+                    )
+                    return@launch
+                }
+
+                val trackCount = response.body()?.total
+                if (trackCount == null) {
+                    _state.value = SpuffleState.Error(
+                        "Spotify did not return this playlist's song count. Please try again."
+                    )
+                    return@launch
+                }
+
+                PlaylistCache.saveTrackCount(context, playlist.id, trackCount)
+                _state.value = SpuffleState.PlaylistChecked(playlist.copy(trackCount = trackCount))
+            } catch (e: IOException) {
+                _state.value = SpuffleState.Error("Could not check playlist: ${e.message}")
+            }
         }
     }
 
@@ -149,7 +230,7 @@ class SpuffleViewModel : ViewModel() {
             val auth = "Bearer $token"
 
             val allTracks = if (playlist.isLikedSongs) {
-                getLikedSongsWithCache(context, auth, playlist.trackCount)
+                getLikedSongsWithCache(context, auth, playlist.trackCount ?: 0)
             } else {
                 getPlaylistTracksWithCache(context, auth, playlist)
             }
@@ -243,7 +324,7 @@ class SpuffleViewModel : ViewModel() {
 
         // Cache miss or snapshot changed — fetch fresh
         android.util.Log.d("Spuffle", "Cache miss for '${playlist.name}', fetching fresh")
-        val tracks = fetchAllPlaylistTracks(auth, playlist.id, playlist.trackCount) ?: return null
+        val tracks = fetchAllPlaylistTracks(auth, playlist.id) ?: return null
 
         // Save to cache with new snapshot ID
         if (currentSnapshotId != null) {
@@ -254,9 +335,9 @@ class SpuffleViewModel : ViewModel() {
     }
 
 
-    private suspend fun getLikedSongsCount(auth: String): Int {
+    private suspend fun getLikedSongsCount(auth: String): Int? {
         val response = RetrofitClient.apiService.getSavedTracks(auth, limit = 1, offset = 0)
-        return response.body()?.total ?: 0
+        return response.body()?.total
     }
 
     private suspend fun fetchAllLikedSongs(auth: String, total: Int): List<Track>? {
@@ -316,15 +397,23 @@ class SpuffleViewModel : ViewModel() {
             null
         }
     }
-    private suspend fun fetchAllPlaylistTracks(auth: String, playlistId: String, total: Int): List<Track>? {
+    private suspend fun fetchAllPlaylistTracks(auth: String, playlistId: String): List<Track>? {
         return try {
-            val firstResponse = RetrofitClient.apiService.getPlaylist(auth, playlistId, offset = 0, limit = 50)
+            val firstResponse = RetrofitClient.apiService.getPlaylistTracks(
+                auth,
+                playlistId,
+                offset = 0,
+                limit = Constants.TRACKS_PER_PAGE
+            )
             if (!firstResponse.isSuccessful) {
-                _state.value = SpuffleState.Error("Failed to access playlist (${firstResponse.code()}).")
+                val error = firstResponse.errorBody()?.string()
+                _state.value = SpuffleState.Error(
+                    "Failed to access playlist (${firstResponse.code()}): $error"
+                )
                 return null
             }
 
-            val firstPage = firstResponse.body()?.items ?: run {
+            val firstPage = firstResponse.body() ?: run {
                 _state.value = SpuffleState.Error("Playlist returned no data.")
                 return null
             }
@@ -338,20 +427,21 @@ class SpuffleViewModel : ViewModel() {
             _state.value = SpuffleState.FetchingTracks(firstPage.items.size, actualTotal)
 
             val allTracks = mutableListOf<Track>()
-            allTracks.addAll(firstPage.items.mapNotNull { it.track ?: it.item })
+            allTracks.addAll(firstPage.items.mapNotNull { it.item ?: it.track })
 
-            if (actualTotal > 50) {
-                val pageCount = (actualTotal + 49) / 50
+            if (actualTotal > Constants.TRACKS_PER_PAGE) {
+                val pageCount =
+                    (actualTotal + Constants.TRACKS_PER_PAGE - 1) / Constants.TRACKS_PER_PAGE
 
                 // Process in batches
                 (1 until pageCount).chunked(BATCH_SIZE).forEach { batch ->
                     val deferredPages = batch.map { page ->
                         viewModelScope.async {
-                            RetrofitClient.apiService.getPlaylist(
+                            RetrofitClient.apiService.getPlaylistTracks(
                                 auth,
                                 playlistId,
-                                offset = page * 50,
-                                limit = 50
+                                offset = page * Constants.TRACKS_PER_PAGE,
+                                limit = Constants.TRACKS_PER_PAGE
                             )
                         }
                     }
@@ -366,11 +456,15 @@ class SpuffleViewModel : ViewModel() {
                                             "Please wait about $waitMinutes minutes before trying again."
                                 )
                             } else {
-                                _state.value = SpuffleState.Error("Request failed: ${response.code()}")
+                                val error = response.errorBody()?.string()
+                                _state.value = SpuffleState.Error(
+                                    "Playlist request failed (${response.code()}): $error"
+                                )
                             }
                             return null
                         }
-                        val tracks = response.body()?.items?.items?.mapNotNull { it.track ?: it.item } ?: emptyList()
+                        val tracks = response.body()?.items?.mapNotNull { it.item ?: it.track }
+                            ?: emptyList()
                         allTracks.addAll(tracks)
                     }
                     _state.value = SpuffleState.FetchingTracks(minOf(allTracks.size, actualTotal), actualTotal)

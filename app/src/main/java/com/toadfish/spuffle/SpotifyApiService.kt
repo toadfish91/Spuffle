@@ -160,13 +160,13 @@ interface SpotifyApiService {
         @Query("offset") offset: Int = 0
     ): Response<UserPlaylistsResponse>
 
-    @GET("playlists/{playlist_id}/tracks")
+    @GET("playlists/{playlist_id}/items")
     suspend fun getPlaylistTracks(
         @Header("Authorization") auth: String,
         @Path("playlist_id") playlistId: String,
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0,
-        @Query("fields") fields: String = "total,items(track(uri,name,artists))"
+        @Query("fields") fields: String = "total,items(item(uri,name,artists))"
     ): Response<PlaylistTracksResponse>
 
     @GET("playlists/{playlist_id}")

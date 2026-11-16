@@ -61,7 +61,10 @@ class SpuffleWidget : AppWidgetProvider() {
         // Update text to show last used playlist
         if (lastPlaylist != null) {
             views.setTextViewText(R.id.widgetTitle, lastPlaylist.name)
-            views.setTextViewText(R.id.widgetSubtitle, "${lastPlaylist.trackCount} songs")
+            views.setTextViewText(
+                R.id.widgetSubtitle,
+                lastPlaylist.trackCount?.let { "$it songs" } ?: "Tap Spuffle to load tracks"
+            )
         } else {
             views.setTextViewText(R.id.widgetTitle, "Spuffle")
             views.setTextViewText(R.id.widgetSubtitle, "Open app first")
