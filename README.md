@@ -19,16 +19,14 @@ A personal Android app that provides true shuffle for your Spotify playlists. In
 
 ---
 
-## Step 1: Install Android Studio
+## Install the Latest Release (Recommended)
 
-1. Go to [developer.android.com/studio](https://developer.android.com/studio) and download Android Studio
-2. Run the installer and follow the setup wizard
-3. When prompted, install the **Android SDK** (the wizard handles this automatically)
-4. Once open, go to **Tools → SDK Manager** and make sure **Android 8.0 or higher** is installed
+1. Open the [Spuffle GitHub Releases](https://github.com/toadfish91/Spuffle/releases) page.
+2. Download the APK attached to the latest release.
+3. Open the downloaded APK on your Android device and follow the prompts to install it. If prompted, allow your browser or file manager to install unknown apps.
+4. Open Spuffle and complete the Spotify setup below.
 
----
-
-## Step 2: Register a Spotify Developer App
+## Configure Spotify
 
 You need your own free Spotify Developer app to get a Client ID.
 
@@ -42,26 +40,39 @@ You need your own free Spotify Developer app to get a Client ID.
 4. After creation, copy your **Client ID** from the app dashboard
 5. Go to **User Management** and add your own Spotify account email address — this is required for Development Mode apps
 
+## First Launch
+
+1. Tap **Settings** and paste the Client ID from your Spotify Developer Dashboard.
+2. Tap **Save**.
+3. Tap **Login with Spotify** and approve the permissions in the browser that opens.
+4. You'll be redirected back to the app.
+5. Tap **Spuffle!** to choose a playlist and start shuffling.
+
+The Spotify app used to create the Client ID must have `spuffle://callback` registered as a redirect URI. In Spotify Development Mode, each user may also need to be added in **User Management** for that app.
+
+> Make sure the Spotify app is open and playing (or recently paused) on your device before tapping Spuffle — the playback API requires an active Spotify session.
+
 ---
 
-## Step 3: Clone and Configure the Project
+## Alternative: Build from Source
+
+### Step 1: Install Android Studio
+
+1. Go to [developer.android.com/studio](https://developer.android.com/studio) and download Android Studio.
+2. Run the installer and follow the setup wizard.
+3. Install the Android SDK when prompted.
+4. In Android Studio, open **Tools → SDK Manager** and make sure **Android 8.0 or higher** is installed.
+
+### Step 2: Clone and open the project
 
 ```bash
 git clone https://github.com/toadfish91/spuffle.git
 cd spuffle
 ```
 
-Open the project in Android Studio via **File → Open**, then navigate to the cloned folder.
+Open the project in Android Studio via **File → Open**, then navigate to the cloned folder. You do not need to edit the source code to configure Spotify.
 
-Once open, find `Constants.kt` in the project and replace the placeholder with your Client ID:
-
-```kotlin
-const val CLIENT_ID = "YOUR_CLIENT_ID_HERE"
-```
-
----
-
-## Step 4: Run on Your Device
+### Step 3: Run on your device
 
 1. Enable **Developer Options** on your Android phone:
    - Go to **Settings → About Phone**
@@ -73,9 +84,7 @@ const val CLIENT_ID = "YOUR_CLIENT_ID_HERE"
 
 The app will build and install directly to your phone.
 
----
-
-## Step 5: Export a Standalone APK (Optional)
+### Step 4: Export a standalone APK (Optional)
 
 If you want a standalone APK file you can install without Android Studio:
 
@@ -101,17 +110,6 @@ If you want a standalone APK file you can install without Android Studio:
 6. Android Studio will show a notification when done — click **locate** to find the APK
 7. Transfer the APK to your phone (via USB, email, or cloud storage) and open it to install
 8. If prompted, allow **Install from unknown sources** in your phone settings
-
----
-
-## First Launch
-
-1. Open Spuffle and tap **Login with Spotify**
-2. Approve the permissions in the browser that opens
-3. You'll be redirected back to the app
-4. Tap **Spuffle!** to choose a playlist and start shuffling
-
-> Make sure the Spotify app is open and playing (or recently paused) on your device before tapping Spuffle — the playback API requires an active Spotify session.
 
 ---
 
