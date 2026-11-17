@@ -35,5 +35,8 @@ replay_pid*
 
 local.properties
 
+# Android Studio project settings
+/.idea/
+
 # Generated Android release artifacts
 /app/release/
