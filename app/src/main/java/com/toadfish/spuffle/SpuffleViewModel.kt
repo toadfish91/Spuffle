@@ -43,7 +43,7 @@ class SpuffleViewModel : ViewModel() {
                 grantType = "authorization_code",
                 code = code,
                 redirectUri = Constants.REDIRECT_URI,
-                clientId = Constants.CLIENT_ID,
+                clientId = SpotifyAuthManager.getClientId(context),
                 codeVerifier = verifier
             )
             val body = response.body()
@@ -560,11 +560,13 @@ class SpuffleViewModel : ViewModel() {
         }
     }
     private suspend fun getValidToken(context: Context): String? {
+        if (SpotifyAuthManager.getClientId(context).isBlank()) return null
+
         if (SpotifyAuthManager.isTokenExpired(context)) {
             val refresh = SpotifyAuthManager.getRefreshToken(context) ?: return null
             val response = RetrofitClient.accountsService.refreshToken(
                 refreshToken = refresh,
-                clientId = Constants.CLIENT_ID
+                clientId = SpotifyAuthManager.getClientId(context)
             )
             val body = response.body() ?: return null
             SpotifyAuthManager.saveTokens(

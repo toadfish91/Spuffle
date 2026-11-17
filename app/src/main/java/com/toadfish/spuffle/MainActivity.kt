@@ -3,7 +3,13 @@ package com.toadfish.spuffle
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputType
+import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
 import android.view.View
+import android.widget.EditText
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -103,7 +109,12 @@ class MainActivity : AppCompatActivity() {
     private fun setupUI() {
         binding.btnSpuffle.setOnClickListener {
             if (!SpotifyAuthManager.isLoggedIn(this)) {
-                SpotifyAuthManager.launchAuthFlow(this)
+                if (SpotifyAuthManager.getClientId(this).isBlank()) {
+                    updateStatus("Enter your Spotify Client ID in Settings before logging in.")
+                    showClientIdSettings()
+                } else {
+                    SpotifyAuthManager.launchAuthFlow(this)
+                }
             } else {
                 // Open the playlist picker
                 playlistLauncher.launch(Intent(this, PlayListActivity::class.java))
@@ -117,6 +128,10 @@ class MainActivity : AppCompatActivity() {
             updateStatus("Logged out.")
         }
 
+        binding.btnSettings.setOnClickListener {
+            showClientIdSettings()
+        }
+
         binding.btnLogout.setOnLongClickListener {
             PlaylistCache.clearCache(this)
             updateStatus("Cache cleared. Next Spuffle will fetch fresh data.")
@@ -124,6 +139,52 @@ class MainActivity : AppCompatActivity() {
         }
 
         updateUI(loggedIn = SpotifyAuthManager.isLoggedIn(this))
+    }
+
+    private fun showClientIdSettings() {
+        val input = EditText(this).apply {
+            hint = "Spotify Client ID"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            setSingleLine(true)
+            setText(SpotifyAuthManager.getClientId(this@MainActivity))
+            setSelection(text.length)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Spotify Client ID")
+            .setMessage(
+                "Paste your app's Client ID from https://developer.spotify.com/dashboard. " +
+                    "Its redirect URI must include ${Constants.REDIRECT_URI}. " +
+                    "Changing the ID signs you out."
+            )
+            .setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.findViewById<TextView>(android.R.id.message)?.let { message ->
+                Linkify.addLinks(message, Linkify.WEB_URLS)
+                message.movementMethod = LinkMovementMethod.getInstance()
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val clientId = input.text.toString().trim()
+                if (clientId.isEmpty()) {
+                    input.error = "Enter a Spotify Client ID"
+                    return@setOnClickListener
+                }
+
+                val changed = SpotifyAuthManager.saveClientId(this, clientId)
+                if (changed) {
+                    PlaylistCache.clearCache(this)
+                    updateUI(loggedIn = false)
+                    updateStatus("Client ID saved. Log in to Spotify again.")
+                } else {
+                    updateStatus("Client ID saved.")
+                }
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun observeState() {

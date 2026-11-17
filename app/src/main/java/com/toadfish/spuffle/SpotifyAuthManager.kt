@@ -18,9 +18,29 @@ object SpotifyAuthManager {
     private const val KEY_REFRESH_TOKEN = "refresh_token"
     private const val KEY_TOKEN_EXPIRY = "token_expiry"
     private const val KEY_CODE_VERIFIER = "code_verifier"
+    private const val KEY_CLIENT_ID = "client_id"
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun getClientId(context: Context): String =
+        prefs(context).getString(KEY_CLIENT_ID, null) ?: Constants.CLIENT_ID
+
+    fun saveClientId(context: Context, clientId: String): Boolean {
+        val normalizedClientId = clientId.trim()
+        val changed = normalizedClientId != getClientId(context)
+        prefs(context).edit().apply {
+            putString(KEY_CLIENT_ID, normalizedClientId)
+            if (changed) {
+                remove(KEY_ACCESS_TOKEN)
+                remove(KEY_REFRESH_TOKEN)
+                remove(KEY_TOKEN_EXPIRY)
+                remove(KEY_CODE_VERIFIER)
+            }
+            apply()
+        }
+        return changed
+    }
 
     // --- PKCE helpers ---
 
@@ -54,10 +74,17 @@ object SpotifyAuthManager {
         return System.currentTimeMillis() > expiry - 60_000 // refresh 1 min early
     }
 
-    fun isLoggedIn(context: Context): Boolean = getAccessToken(context) != null
+    fun isLoggedIn(context: Context): Boolean =
+        getClientId(context).isNotBlank() && getAccessToken(context) != null
 
     fun clearTokens(context: Context) {
-        prefs(context).edit().clear().apply()
+        prefs(context).edit().apply {
+            remove(KEY_ACCESS_TOKEN)
+            remove(KEY_REFRESH_TOKEN)
+            remove(KEY_TOKEN_EXPIRY)
+            remove(KEY_CODE_VERIFIER)
+            apply()
+        }
     }
 
     fun saveCodeVerifier(context: Context, verifier: String) {
@@ -74,7 +101,7 @@ object SpotifyAuthManager {
         saveCodeVerifier(context, verifier)
 
         val authUrl = Uri.parse("https://accounts.spotify.com/authorize").buildUpon()
-            .appendQueryParameter("client_id", Constants.CLIENT_ID)
+            .appendQueryParameter("client_id", getClientId(context))
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("redirect_uri", Constants.REDIRECT_URI)
             .appendQueryParameter("scope", Constants.SCOPES)

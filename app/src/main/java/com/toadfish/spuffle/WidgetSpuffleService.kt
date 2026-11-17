@@ -107,11 +107,13 @@ class WidgetSpuffleService : Service() {
     }
 
     private suspend fun getValidToken(context: android.content.Context): String? {
+        if (SpotifyAuthManager.getClientId(context).isBlank()) return null
+
         if (SpotifyAuthManager.isTokenExpired(context)) {
             val refresh = SpotifyAuthManager.getRefreshToken(context) ?: return null
             val response = RetrofitClient.accountsService.refreshToken(
                 refreshToken = refresh,
-                clientId = Constants.CLIENT_ID
+                clientId = SpotifyAuthManager.getClientId(context)
             )
             val body = response.body() ?: return null
             SpotifyAuthManager.saveTokens(
