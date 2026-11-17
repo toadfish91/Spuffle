@@ -26,6 +26,26 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val data = result.data ?: return@registerForActivityResult
+            val playlistIds = data.getStringArrayListExtra("playlist_ids")
+            if (!playlistIds.isNullOrEmpty()) {
+                val playlistNames = data.getStringArrayListExtra("playlist_names").orEmpty()
+                val trackCounts = data.getIntArrayExtra("playlist_track_counts") ?: IntArray(playlistIds.size) { -1 }
+                val likedSongsFlags =
+                    data.getBooleanArrayExtra("playlist_liked_songs_flags")
+                        ?: BooleanArray(playlistIds.size)
+                val selectedPlaylists = playlistIds.mapIndexed { index, id ->
+                    Playlist(
+                        id = id,
+                        name = playlistNames.getOrElse(index) { "Unknown" },
+                        trackCount = trackCounts.getOrElse(index) { -1 }.takeIf { it >= 0 },
+                        imageUrl = null,
+                        isLikedSongs = likedSongsFlags.getOrElse(index) { false }
+                    )
+                }
+                viewModel.spuffle(this, selectedPlaylists)
+                return@registerForActivityResult
+            }
+
             val playlist = Playlist(
                 id = data.getStringExtra("playlist_id") ?: return@registerForActivityResult,
                 name = data.getStringExtra("playlist_name") ?: "Unknown",
@@ -124,7 +144,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     is SpuffleState.PlaylistsLoaded -> Unit // handled in PlaylistActivity
                     is SpuffleState.CheckingPlaylist,
-                    is SpuffleState.PlaylistChecked -> Unit // handled in PlaylistActivity
+                    is SpuffleState.PlaylistChecked,
+                    is SpuffleState.CheckingPlaylists,
+                    is SpuffleState.PlaylistsChecked -> Unit // handled in PlaylistActivity
                     is SpuffleState.Success -> {
                         binding.progressBar.visibility = View.GONE
                         binding.btnSpuffle.isEnabled = true

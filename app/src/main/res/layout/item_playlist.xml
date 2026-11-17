@@ -43,4 +43,13 @@
 
     </LinearLayout>
 
+    <CheckBox
+        android:id="@+id/cbSelected"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:buttonTint="#1DB954"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone" />
+
 </LinearLayout>

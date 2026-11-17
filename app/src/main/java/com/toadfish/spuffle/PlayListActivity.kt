@@ -17,8 +17,11 @@ class PlayListActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPlaylistBinding
     private val viewModel: SpuffleViewModel by viewModels()
+    private var playlistAdapter: PlaylistAdapter? = null
     private var playlists = emptyList<Playlist>()
     private var isCheckingPlaylist = false
+    private var isMultiSelectMode = false
+    private val selectedPlaylists = linkedMapOf<String, Playlist>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +46,12 @@ class PlayListActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(binding.root)
 
         binding.rvPlaylists.layoutManager = LinearLayoutManager(this)
+        binding.btnDone.setOnClickListener {
+            if (!isCheckingPlaylist && selectedPlaylists.isNotEmpty()) {
+                isCheckingPlaylist = true
+                viewModel.checkPlaylists(this, selectedPlaylists.values.toList())
+            }
+        }
 
         observeState()
         viewModel.loadPlaylists(this)
@@ -62,14 +71,21 @@ class PlayListActivity : AppCompatActivity() {
                         binding.tvStatus.text = "Checking ${state.playlist.name}..."
                         binding.rvPlaylists.visibility = View.VISIBLE
                     }
+                    is SpuffleState.CheckingPlaylists -> {
+                        binding.progressBar.visibility = View.VISIBLE
+                        binding.tvStatus.text = "Checking ${state.playlists.size} selected playlists..."
+                        binding.rvPlaylists.visibility = View.VISIBLE
+                    }
                     is SpuffleState.PlaylistsLoaded -> {
                         isCheckingPlaylist = false
                         playlists = state.playlists
+                        selectedPlaylists.clear()
+                        isMultiSelectMode = false
                         binding.progressBar.visibility = View.GONE
                         binding.tvStatus.text = if (playlists.size == 1) {
                             "Spotify returned no other playlists."
                         } else {
-                            "Choose a playlist to Spuffle"
+                            "Tap a playlist to Spuffle, or press and hold to select multiple."
                         }
                         binding.rvPlaylists.visibility = View.VISIBLE
                         showPlaylists()
@@ -86,14 +102,24 @@ class PlayListActivity : AppCompatActivity() {
                             binding.rvPlaylists.visibility = View.VISIBLE
                             showPlaylists()
                         } else {
-                            val intent = Intent().apply {
-                                putExtra("playlist_id", state.playlist.id)
-                                putExtra("playlist_name", state.playlist.name)
-                                putExtra("playlist_track_count", state.playlist.trackCount ?: -1)
-                                putExtra("playlist_is_liked_songs", state.playlist.isLikedSongs)
-                            }
-                            setResult(RESULT_OK, intent)
-                            finish()
+                            finishWithSelection(listOf(state.playlist))
+                        }
+                    }
+                    is SpuffleState.PlaylistsChecked -> {
+                        isCheckingPlaylist = false
+                        binding.progressBar.visibility = View.GONE
+                        val checkedById = state.playlists.associateBy { it.id }
+                        playlists = playlists.map { checkedById[it.id] ?: it }
+                        selectedPlaylists.clear()
+                        selectedPlaylists.putAll(state.playlists.associateBy { it.id })
+
+                        if (state.playlists.all { it.trackCount == 0 }) {
+                            binding.tvStatus.text =
+                                "All selected playlists are empty (0 songs). Choose another playlist."
+                            binding.rvPlaylists.visibility = View.VISIBLE
+                            showPlaylists()
+                        } else {
+                            finishWithSelection(state.playlists)
                         }
                     }
                     is SpuffleState.Error -> {
@@ -110,11 +136,75 @@ class PlayListActivity : AppCompatActivity() {
     }
 
     private fun showPlaylists() {
-        binding.rvPlaylists.adapter = PlaylistAdapter(playlists) { playlist ->
-            if (!isCheckingPlaylist) {
-                isCheckingPlaylist = true
-                viewModel.checkPlaylist(this, playlist)
-            }
+        binding.btnDone.visibility =
+            if (isMultiSelectMode) View.VISIBLE else View.GONE
+        val existingAdapter = playlistAdapter
+        if (existingAdapter != null) {
+            existingAdapter.updatePlaylists(
+                playlists,
+                selectedPlaylists.keys.toSet(),
+                isMultiSelectMode
+            )
+        } else {
+            playlistAdapter = PlaylistAdapter(
+                playlists = playlists,
+                selectedPlaylistIds = selectedPlaylists.keys.toSet(),
+                isMultiSelectMode = isMultiSelectMode,
+                onPlaylistSelected = { playlist ->
+                    if (!isCheckingPlaylist) {
+                        if (isMultiSelectMode) {
+                            togglePlaylistSelection(playlist)
+                        } else {
+                            isCheckingPlaylist = true
+                            viewModel.checkPlaylist(this, playlist)
+                        }
+                    }
+                },
+                onPlaylistLongSelected = { playlist ->
+                    if (!isCheckingPlaylist) {
+                        isMultiSelectMode = true
+                        togglePlaylistSelection(playlist)
+                    }
+                }
+            ).also { binding.rvPlaylists.adapter = it }
         }
+    }
+
+    private fun togglePlaylistSelection(playlist: Playlist) {
+        if (selectedPlaylists.remove(playlist.id) == null) {
+            selectedPlaylists[playlist.id] = playlist
+        }
+        binding.tvStatus.text = "${selectedPlaylists.size} selected. Tap Done to Spuffle together."
+        showPlaylists()
+    }
+
+    private fun finishWithSelection(selected: List<Playlist>) {
+        val intent = Intent()
+        if (selected.size == 1) {
+            val playlist = selected.first()
+            intent.putExtra("playlist_id", playlist.id)
+            intent.putExtra("playlist_name", playlist.name)
+            intent.putExtra("playlist_track_count", playlist.trackCount ?: -1)
+            intent.putExtra("playlist_is_liked_songs", playlist.isLikedSongs)
+        } else {
+            intent.putStringArrayListExtra(
+                "playlist_ids",
+                ArrayList(selected.map { it.id })
+            )
+            intent.putStringArrayListExtra(
+                "playlist_names",
+                ArrayList(selected.map { it.name })
+            )
+            intent.putExtra(
+                "playlist_track_counts",
+                selected.map { it.trackCount ?: -1 }.toIntArray()
+            )
+            intent.putExtra(
+                "playlist_liked_songs_flags",
+                selected.map { it.isLikedSongs }.toBooleanArray()
+            )
+        }
+        setResult(RESULT_OK, intent)
+        finish()
     }
 }

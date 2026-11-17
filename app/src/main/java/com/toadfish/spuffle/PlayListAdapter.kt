@@ -1,14 +1,29 @@
 package com.toadfish.spuffle
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.toadfish.spuffle.databinding.ItemPlaylistBinding
 
 class PlaylistAdapter(
-    private val playlists: List<Playlist>,
-    private val onPlaylistSelected: (Playlist) -> Unit
+    private var playlists: List<Playlist>,
+    private var selectedPlaylistIds: Set<String>,
+    private var isMultiSelectMode: Boolean,
+    private val onPlaylistSelected: (Playlist) -> Unit,
+    private val onPlaylistLongSelected: (Playlist) -> Unit
 ) : RecyclerView.Adapter<PlaylistAdapter.ViewHolder>() {
+
+    fun updatePlaylists(
+        playlists: List<Playlist>,
+        selectedPlaylistIds: Set<String>,
+        isMultiSelectMode: Boolean
+    ) {
+        this.playlists = playlists
+        this.selectedPlaylistIds = selectedPlaylistIds
+        this.isMultiSelectMode = isMultiSelectMode
+        notifyDataSetChanged()
+    }
 
     inner class ViewHolder(val binding: ItemPlaylistBinding) :
         RecyclerView.ViewHolder(binding.root)
@@ -36,7 +51,14 @@ class PlaylistAdapter(
                 else R.drawable.ic_playlist
             )
 
+            cbSelected.visibility = if (isMultiSelectMode) View.VISIBLE else View.GONE
+            cbSelected.isChecked = playlist.id in selectedPlaylistIds
+
             root.setOnClickListener { onPlaylistSelected(playlist) }
+            root.setOnLongClickListener {
+                onPlaylistLongSelected(playlist)
+                true
+            }
         }
     }
 
